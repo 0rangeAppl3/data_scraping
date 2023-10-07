@@ -1,7 +1,7 @@
 from typing import Any, Mapping
 
 import psycopg2
-from psycopg2 import connection
+from psycopg2._psycopg import connection
 from pymongo import MongoClient
 from pymongo.database import Database
 from selenium import webdriver

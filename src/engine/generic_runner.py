@@ -1,6 +1,6 @@
 from typing import Mapping, Any
 
-from psycopg2 import connection
+from psycopg2._psycopg import connection
 from pymongo.database import Database
 from selenium.webdriver.chrome.webdriver import WebDriver
 
