@@ -20,7 +20,7 @@ def run(data_lake, driver):
     
     # Start the timer to measure wait time
     start_time = time.time()
-    preload_time = 
+    preload_time = 5
     try:
     # Wait for the element with ID 'job-card_19' to appear. If it times out, wait for 'job-card_1'
       try:
