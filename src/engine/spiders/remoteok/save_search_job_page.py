@@ -1,5 +1,8 @@
+import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
+from pathlib import Path
 
 from bs4 import BeautifulSoup
 from selenium.common.exceptions import TimeoutException
@@ -7,7 +10,10 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.ui import WebDriverWait
 
+from common.storage import get_writer
 from engine.generic_runner import SearchJobPageSaver
+from network import fetcher
+from paths import DICE_PATH, HTML_DIRNAME
 
 
 def has_new_content_loaded(driver, last_element):
@@ -23,6 +29,9 @@ def has_new_content_loaded(driver, last_element):
 
 
 class RemoteOkSearchJobPageSaver(SearchJobPageSaver):
+    STEP = 20
+    date_path: Path
+
     def run(self, data_lake, driver):
         collection = data_lake['job_page']
 
@@ -154,3 +163,71 @@ class RemoteOkSearchJobPageSaver(SearchJobPageSaver):
             # save page_source into database
             print(f'saved search job pages for URL: {url}')
         print("saved all job page to db")
+
+    def non_sql_run(self, date: str):
+        self.date_path = DICE_PATH / date
+        self._fetch_pages(50, True)  # Can put max offset to fetch here
+
+    def _fetch_pages(self, until=-1, threaded=False):
+        current = 0
+        if until == -1 and threaded:
+            raise RuntimeError("Multithreaded mode must have an offset bound")
+        if threaded:
+            futures = list()
+            while current != until:
+                executor = ThreadPoolExecutor(max_workers=3)
+                offset = current * 20
+                file_path = self.date_path / HTML_DIRNAME / "{}.html".format(offset)
+                futures.append(executor.submit(RemoteOkSearchJobPageSaver._fetch_page, file_path, offset, False))
+                current += 1
+            for future in futures:
+                future.result()
+        else:
+            while current != until:
+                try:
+                    offset = current * 20
+                    file_path = self.date_path / HTML_DIRNAME / "{}.html".format(offset)
+                    RemoteOkSearchJobPageSaver._fetch_page(file_path, offset)
+                    current += 1
+                except EOFError as eof:
+                    logging.warning(eof)
+                    return
+
+    @classmethod
+    def _fetch_page(cls, file_path: Path, offset, use_proxy=False):
+        if file_path.exists():
+            return
+        cookies = {
+            'adShuffler': '0',
+            'new_user': 'false',
+            'visits': '69',
+            'visit_count': '69'
+        }
+
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; rv:109.0) Gecko/20100101 Firefox/118.0',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.5',
+            'X-Requested-With': 'XMLHttpRequest',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Referer': 'https://remoteok.com/remote-c-jobs',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-GPC': '1',
+        }
+
+        params = {
+            'tags': 'c',
+            'action': 'get_jobs',
+            'offset': offset,
+        }
+        if use_proxy:
+            response = fetcher.get_with_proxy('https://remoteok.com/', params=params, cookies=cookies, headers=headers)
+        else:
+            response = fetcher.get('https://remoteok.com/', params=params, cookies=cookies, headers=headers)
+        if len(response.content) == 0:
+            raise EOFError("No more pages after offset {}".format(offset))
+        with get_writer(file_path=file_path) as fw:
+            fw.write(response.content)
