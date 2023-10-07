@@ -20,16 +20,15 @@ class Session:
     client: MongoClient
 
     def __init__(self):
-        data_lake_config = config.data_lake
         # setup data lake
-        self.client = MongoClient(data_lake_config['uri'])
-        self.data_lake = self.client[data_lake_config['database']]
+        self.client = MongoClient(config.data_lake.uri)
+        self.data_lake = self.client[config.data_lake.database]
         # setup data warehouse
         self.data_warehouse = psycopg2.connect(
-            host=config.data_warehouse['host'],
-            database=config.data_warehouse['database'],
-            user=config.data_warehouse['user'],
-            password=config.data_warehouse['password']
+            host=config.data_warehouse.host,
+            database=config.data_warehouse.database,
+            user=config.data_warehouse.user,
+            password=config.data_warehouse.password
         )
         # setup selenium
         chrome_options = Options()

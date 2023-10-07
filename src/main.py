@@ -19,6 +19,6 @@ def main(website):
     engine.run()
 
 
-if __name__ == "__main__()":
+if __name__ == "__main__":
     args = sys.argv
-    main(args[1])
+    main("dice")
