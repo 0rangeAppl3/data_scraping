@@ -85,8 +85,8 @@ class RemoteOkJobDataSaver(JobDataSaver):
         soup = bs4.BeautifulSoup(html_content.decode('utf8', errors='ignore'), 'lxml')
         jobs = list()
 
-        job_desc_elements = soup.find_all(".expandContents")
-        job_title_elements = soup.find_all("a", itemprop="url")
+        job_desc_elements = soup.select("div.expandContents")
+        job_title_elements = soup.select('a[itemprop="url"]')
 
         # Need these things
         """
@@ -104,5 +104,8 @@ class RemoteOkJobDataSaver(JobDataSaver):
             job_link = "https://remoteok.com" + job_title_ele["href"]
             job_title = job_title_ele.text.strip()
             # Do the rest here
-
+            jobs.append({
+                "job_link": job_link,
+                "job_title": job_title,
+            })
         return pd.DataFrame(jobs)
