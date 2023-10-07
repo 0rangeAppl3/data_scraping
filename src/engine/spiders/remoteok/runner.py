@@ -5,8 +5,8 @@ from engine.spiders.remoteok.save_search_job_page import RemoteOkSearchJobPageSa
 
 
 class RemoteOkRunner(GenericRunner):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, session):
+        super().__init__(session)
         self.save_search_job_page = RemoteOkSearchJobPageSaver()
         self.save_job_data = RemoteOkJobDataSaver()
         self.etl_warehouse = RemoteOkWarehouse()

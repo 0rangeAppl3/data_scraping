@@ -28,10 +28,10 @@ class GenericRunner:
     save_job_data: JobDataSaver
     etl_warehouse: Warehouse
 
-    def __init__(self):
-        raise NotImplementedError("Not implemented for generic runners.")
+    def __init__(self, session: Session):
+        self.session = session
 
-    def run(self, session: Session):
-        self.save_search_job_page.run(session.data_lake, session.driver)
-        self.save_job_data.run(session.data_lake, session.driver)
-        self.etl_warehouse.run(session.data_lake, session.data_warehouse, session.driver)
+    def run(self):
+        self.save_search_job_page.run(self.session.data_lake, self.session.driver)
+        self.save_job_data.run(self.session.data_lake, self.session.driver)
+        self.etl_warehouse.run(self.session.data_lake, self.session.data_warehouse, self.session.driver)
