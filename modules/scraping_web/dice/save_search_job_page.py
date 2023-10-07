@@ -5,6 +5,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 from modules.utils import get_page_number
+from selenium.common.exceptions import TimeoutException
 
 def run(data_lake, driver):
   collection = data_lake['job_page']
@@ -19,11 +20,12 @@ def run(data_lake, driver):
     
     # Start the timer to measure wait time
     start_time = time.time()
-    preload_time = 0.5
+    preload_time = 5
     try:
       # Wait for the 15th div element with class "job-details" to appear
-      element_present = EC.presence_of_element_located((By.ID, 'job-card_0'))
-      WebDriverWait(driver, preload_time).until(element_present)
+      WebDriverWait(driver, preload_time).until(EC.presence_of_element_located((By.ID, 'job-card_19')))
+    except TimeoutException:
+      WebDriverWait(driver, preload_time).until(EC.presence_of_element_located((By.ID, 'job-card_1')))
       
       # End the timer and print the duration
       end_time = time.time()
