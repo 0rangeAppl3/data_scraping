@@ -157,4 +157,188 @@ def run(data_lake, data_warehouse, driver):
         cursor.execute(upsert_query, data_to_upsert)
         data_warehouse.commit()
         # job_collection.update_one({'job_link': job_wh_record['job_link']}, {'$set': {'ETL': True}}, upsert=True)
-  
+
+
+
+
+
+
+
+
+
+
+
+from selenium.webdriver.common.by import By
+import json
+import re
+import selenium
+
+
+def extract_salary(text):
+    salary = "Depend on experience"
+    pattern = r"\$\d+k - \$\d+k"
+    matches = re.findall(pattern, text)
+    if matches:
+        salary_range = matches[0]
+        return salary_range
+    return salary
+
+
+def fetch_element(driver, method, value):
+    """Utility function to fetch a single element, returns None if not found."""
+    try:
+        return driver.find_element(method, value)
+    except selenium.common.exceptions.NoSuchElementException:
+        return None
+
+
+def fetch_elements(driver, method, value):
+    """Utility function to fetch multiple elements, returns an empty list if not found."""
+    try:
+        return driver.find_elements(method, value)
+    except selenium.common.exceptions.NoSuchElementException:
+        return []
+
+
+def run(data_lake, data_warehouse, driver):
+    cursor = data_warehouse.cursor()
+    collection = data_lake["job_page"]
+    job_records = collection.find({"website": "remoteok"})
+
+    for page in job_records:
+        try:
+            html_content = page["html_content"]
+            driver.execute_script(
+                "document.children[0].innerHTML = {}".format(json.dumps(html_content))
+            )
+
+            tbody = fetch_element(driver, By.TAG_NAME, "tbody")
+            print('got tbody')
+            if not tbody:
+                continue
+
+            list_tr = fetch_elements(tbody, By.TAG_NAME, "tr")
+
+            for tr in list_tr:
+                if tr.get_attribute("data-slug"):
+                    id = tr.get_attribute("id")
+                    id_int = id.split('-')[1]
+                    print(id_int)
+
+                    # If any of these mandatory fields is None, we'll skip the record.
+                    job_link = tr.get_attribute('data-slug')
+                    job_title_element = fetch_element(tr, By.XPATH, f'//*[@id="{id}"]/td[2]/a/h2')
+                    job_title = job_title_element.text if job_title_element else None
+                    job_company_element = fetch_element(tr, By.XPATH, f'//*[@id="{id}"]/td[2]/span[3]/h3')
+                    job_company = job_company_element.text if job_company_element else None
+                    post_tag = fetch_element(tr, By.TAG_NAME, 'time')
+
+                    if not (job_link and job_title and job_company and post_tag):
+                        continue
+
+                    posted_date = post_tag.get_attribute("datetime")
+
+                    jd_element = fetch_element(driver, By.XPATH, f'//tr[contains(@class, "expand-{id_int}")]/td/div[@class="expandContents"]/div[@class="description"]/div[contains(@class, "html")]')
+                    job_description = jd_element.text if jd_element else None
+                    
+                    if not job_description:
+                        job_description = fetch_element(driver, By.XPATH, f'//tr[contains(@class, "expand-{id_int}")]/td/div[@class="expandContents"]/div[@class="description"]/div[contains(@class, "markdown")]').text
+
+                    # Continue to the next record if job_description is still None.
+                    if not job_description:
+                        continue
+
+                    # Extract salary
+                    salary = extract_salary(tr.text) if tr else "Depend on experience"
+
+                    # Extract company website
+                    company_website_elements = fetch_elements(driver, By.XPATH, f'//tr[contains(@class, "expand-{id_int}")]/td/div[@class="expandContents"]/div[@class="description"]/div[contains(@class, "company_profile")]/a[1]')
+                    print(company_website_elements)
+                    company_website = company_website_elements[0].get_attribute('href') if company_website_elements else "do not found website_company"
+                    print(company_website)
+                    
+                    # Extract verified_status and closed_status
+                    verified_status = ""
+                    closed_status = ""
+                    if fetch_element(tr, By.XPATH, f'//*[@id="{id}"]/td[2]/span[contains(@class, "verified")]'):
+                        verified_status = "verified"
+
+                    if fetch_element(tr, By.XPATH, f'//*[@id="{id}"]/td[2]/span[contains(@class, "closed")]'):
+                        closed_status = "closed"
+
+                    # Extract location
+                    location = []
+                    job_location = fetch_elements(tr, By.CLASS_NAME, 'location')
+                    for loc in job_location:
+                        if '$' not in loc.text:
+                            location.append((re.sub(r'[^(a-z|A-Z) ]', '', loc.text)).strip())
+
+                    # Construct job link
+                    page_link = 'https://remoteok.com/remote-jobs/'
+                    job_link = page_link + job_link
+                    print('get ', job_link)
+
+                    # Extract skills
+                    skill = []
+                    h3 = fetch_elements(tr, By.TAG_NAME, 'h3')
+                    for list_item in h3:
+                        if list_item.text not in job_company:
+                            skill.append(list_item.text)
+
+                    # Construct record
+                    job_wh_record = {
+                        "job_link": job_link,
+                        "job_title": job_title,
+                        "job_salary": salary,
+                        "job_location": ",".join(location),
+                        "job_skills": ",".join(skill),
+                        "job_company": job_company,
+                        "website": page["website"],
+                        "job_description": job_description,
+                        "job_verified_status": verified_status,
+                        "job_open_status": closed_status,
+                        "company_website": company_website,
+                        "posted_date": posted_date
+                    }
+                    print('done job record, starting upsert')
+                    data_to_upsert = [
+                        (str(job_wh_record["job_salary"]),
+                         str(job_wh_record["job_company"]),
+                         str(job_wh_record["job_title"]),
+                         str(job_wh_record["job_link"]),
+                         str(job_wh_record["job_location"]),
+                         str(job_wh_record["job_skills"]),
+                         str(job_wh_record["job_description"]),
+                         str(job_wh_record["website"]),
+                         job_wh_record["posted_date"],
+                         str(job_wh_record["job_verified_status"]),
+                         str(job_wh_record["job_open_status"]),
+                         str(job_wh_record["company_website"])
+                         )
+                    ]
+
+                    upsert_query = """
+                                   INSERT INTO job_table (job_salary, job_company, job_title, job_link,job_location,job_skills,job_description, website, posted_date, job_verified_status, job_open_status, company_website)
+                                   VALUES %s
+                                   ON CONFLICT (job_link) DO UPDATE
+                                   SET job_salary = EXCLUDED.job_salary,
+                                       job_company = EXCLUDED.job_company,
+                                       job_title = EXCLUDED.job_title,
+                                       job_location = EXCLUDED.job_location,
+                                       job_skills= EXCLUDED.job_skills,
+                                       job_description= EXCLUDED.job_description,
+                                       website = EXCLUDED.website,
+                                       job_verified_status = EXCLUDED.job_verified_status,
+                                       job_open_status = EXCLUDED.job_open_status,
+                                       posted_date = EXCLUDED.posted_date,
+                                       company_website = EXCLUDED.company_website;
+                                   """
+                    cursor.execute(upsert_query, data_to_upsert)
+                    data_warehouse.commit()
+
+        except selenium.common.exceptions.StaleElementReferenceException:
+            print("StaleElementReferenceException encountered. Moving on to the next record.")
+        except Exception as e:
+            print(f"An unexpected error occurred: {str(e)}")
+
+
